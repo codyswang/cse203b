@@ -33,6 +33,46 @@ name_to_id = {
     # so needs to be read from included txt file
 }
 
+# baseline model stats from the paper (used to take performance deltas)
+orig_stats = {  
+    "ionosphere": {
+        "SVM": (0.851, 0.032),
+        "LDA": (0.865, 0.037),
+        "KNN": (0.858, 0.036)
+    },
+    "sonar": {
+        "SVM": (0.751, 0.047),
+        "LDA": (0.737, 0.052),
+        "KNN": (0.865, 0.046)
+    },
+    # "bupa liver": 60, -- regression type dataset, omitted
+    "balance scale": {
+        "SVM": (0.899, 0.022),
+        "LDA": (0.709, 0.027),
+        "KNN": (0.875, 0.033)
+    },
+    "wine": {
+        "SVM": (0.950, 0.029),
+        "LDA": (0.976, 0.025),
+        "KNN": (0.732, 0.053)
+    },
+    "iris": {
+        "SVM": (0.960, 0.025),
+        "LDA": (0.982, 0.014),
+        "KNN": (0.969, 0.016)
+    },
+    "seeds": {
+        "SVM": (0.960, 0.022),
+        "LDA": (0.694, 0.017),
+        "KNN": (0.908, 0.028)
+    },
+    "knowledge": {
+        "SVM": (0.922, 0.039),
+        "LDA": (0.953, 0.022),
+        "KNN": (0.840, 0.042)
+    },
+}
+
 # 5 is all we need for these datasets
 COLOR_PALETTE = ["red", "blue", "green", "pink", "cyan"]
 
@@ -181,6 +221,7 @@ def accuracy_splits(
     classifier, 
     runs=10, 
     test_size=0.3, 
+    data_preprocessor=None, # this is pretty much DataTransformer
 ) -> Tuple[float, float, List]:
     """
     Calculate "Leave-One-Out" Cross-Validation accuracy for a classifier.
@@ -200,9 +241,13 @@ def accuracy_splits(
 
     rs = ShuffleSplit(n_splits=runs, test_size=test_size)
     for i, (train_index, test_index) in enumerate(rs.split(X)):
-        classifier.fit(X[train_index], y[train_index])
-        classifier.fit(X[train_index], y[train_index])
-        acc = classifier.score(X[test_index], y[test_index])
+        if data_preprocessor is not None:
+            pproc = data_preprocessor().fit(X[train_index], y[train_index])
+            classifier.fit(pproc.transform(X[train_index]), y[train_index])
+            acc = classifier.score(pproc.transform(X[test_index]), y[test_index])
+        else: 
+            classifier.fit(X[train_index], y[train_index])
+            acc = classifier.score(X[test_index], y[test_index])
         accuracies.append(acc)
     # for run in range(runs):
     #     X_train, X_test, y_train, y_test = train_test_split(
@@ -214,7 +259,9 @@ def accuracy_splits(
     
     return np.mean(accuracies), np.std(accuracies), accuracies
 
-def run_baseline_models(X, y, test_size=0.3, runs=10, seed=0):
+def run_baseline_models(
+        X, y, test_size=0.3, runs=10,
+        data_preprocessor=None, verbose=False, seed=0):
     """
     Compare accuracy between SVM, LDA, CART, and KNN
     
@@ -239,9 +286,11 @@ def run_baseline_models(X, y, test_size=0.3, runs=10, seed=0):
     results = {}
     
     for name, model in models.items():
-        acc_mean, acc_std, acc_list = accuracy(X, y, model, test_size=test_size, runs=runs)
-        results[name] = acc_mean
-        print(f"{name} Mean Accuracy (from {runs} runs): {acc_mean:.4f} (std: {acc_std:.4f})")
+        acc_mean, acc_std, acc_list = accuracy_splits(
+            X, y, model, test_size=test_size, runs=runs, data_preprocessor=data_preprocessor)
+        results[name] = (acc_mean, acc_std)
+        if verbose:
+            print(f"{name} Mean Accuracy (from {runs} runs): {acc_mean:.3f} (std: {acc_std:.3f})")
     
     return results
 

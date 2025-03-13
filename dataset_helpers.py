@@ -222,6 +222,7 @@ def accuracy_splits(
     runs=10, 
     test_size=0.3, 
     data_preprocessor=None, # this is pretty much DataTransformer
+    loocv=False
 ) -> Tuple[float, float, List]:
     """
     Calculate "Leave-One-Out" Cross-Validation accuracy for a classifier.
@@ -233,14 +234,17 @@ def accuracy_splits(
         classifier (sklearn estimator): Initialized classifier object
     
     Returns:
-        float: LOOCV accuracy mean
-        float: LOOCV std
+        float: accuracy mean
+        float: std
         List:  accuracies per run
     """
     accuracies = []
 
-    rs = ShuffleSplit(n_splits=runs, test_size=test_size)
-    for i, (train_index, test_index) in enumerate(rs.split(X)):
+    if loocv == False:
+        rs = ShuffleSplit(n_splits=runs, test_size=test_size)
+    else:
+        rs = LeaveOneOut()
+    for i, (train_index, test_index) in enumerate(rs.split(X, y)):
         if data_preprocessor is not None:
             pproc = data_preprocessor().fit(X[train_index], y[train_index])
             classifier.fit(pproc.transform(X[train_index]), y[train_index])
@@ -261,7 +265,7 @@ def accuracy_splits(
 
 def run_baseline_models(
         X, y, test_size=0.3, runs=10,
-        data_preprocessor=None, verbose=False, seed=0):
+        data_preprocessor=None, verbose=False, seed=0, loocv=False):
     """
     Compare accuracy between SVM, LDA, CART, and KNN
     
@@ -269,11 +273,11 @@ def run_baseline_models(
         X (array-like): Feature matrix
         y (array-like): Target vector
         test_size (float): ratio of test set
-        runs (int): num holdout iterations for LOOCV evaluation
+        runs (int): num holdout iterations
         seed (int): random seed
     
     Returns:
-        dict: Dictionary of model names and their LOOCV accuracies
+        dict: Dictionary of model names and their mean accuracies (+ std)
     """
     # paper set these at default parameters
     models = {
@@ -287,7 +291,7 @@ def run_baseline_models(
     
     for name, model in models.items():
         acc_mean, acc_std, acc_list = accuracy_splits(
-            X, y, model, test_size=test_size, runs=runs, data_preprocessor=data_preprocessor)
+            X, y, model, test_size=test_size, runs=runs, data_preprocessor=data_preprocessor, loocv=loocv)
         results[name] = (acc_mean, acc_std)
         if verbose:
             print(f"{name} Mean Accuracy (from {runs} runs): {acc_mean:.3f} (std: {acc_std:.3f})")
